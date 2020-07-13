@@ -82,6 +82,8 @@ bool IOCPModule::PER_SOCKET_CONTEXT::postSend(IOCPModule* module, const char* bu
 		}
 		return (SOCKET_ERROR != ret || WSAGetLastError() == WSA_IO_PENDING);
 	}
+
+	// else
 	PER_IO_CONTEXT* ioContext = module->allocIoContext(this->socket, send, IOCPModule::sendHandler);
 	memcpy(ioContext->szBuffer, buff, len); // TODO: optimize
 	ioContext->wsaBuf.len = (ULONG)len;
@@ -253,7 +255,15 @@ bool IOCPModule::eventLoop() {
 	if (GetQueuedCompletionStatus(iocp, &nBytes, (PULONG_PTR)&socketContext, &lpoverlapped, 1000) == FALSE) {
 		return true;
 	};
+
 	PER_IO_CONTEXT* context = CONTAINING_RECORD(lpoverlapped, PER_IO_CONTEXT, overlapped);
+	if (0 == nBytes)//gxg+
+	{
+		// 释放掉对应的资源
+		mempool->free(context);
+		return true;
+	}
+
 	DISCONNECT_CONTEXT* disconnectContex;
 	switch (context->opType) {
 	case accept:

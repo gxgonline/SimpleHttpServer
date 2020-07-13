@@ -52,8 +52,9 @@ void HttpModule::Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext
 			SendFile(module, ioContext, socketContext, request, "./www/1.png", "image/png");
 		}
 		else {
-			std::string notFound = request->getVersion() + " " + "404 Not Found\r\n";
-			socketContext->postSend(module, notFound.c_str(), notFound.length());
+			SendFile(module, ioContext, socketContext, request, "./www/404.html", "text/html");
+			//std::string notFound = request->getVersion() + " " + "404 Not Found\r\n";
+			//socketContext->postSend(module, notFound.c_str(), notFound.length());
 		}
 	}
 	else if (method == "POST") {
@@ -82,37 +83,70 @@ void HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioCont
 	//if (fp == NULL)
 	if (fp == INVALID_HANDLE_VALUE)
 	{
-		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love.\r\n";
+		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love 1.\r\n";
+		socketContext->postSend(module, notFound.c_str(), notFound.length());
+		return;
+	}
+	LARGE_INTEGER lpFileSize;
+	if (!GetFileSizeEx(fp, &lpFileSize))
+	{
+		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love 2.\r\n";
+		socketContext->postSend(module, notFound.c_str(), notFound.length());
+		CloseHandle(fp);
+		return;
+	}
+	DWORD dwBytesInBlock = lpFileSize.LowPart;//GetFileSize(fp, NULL);
+
+
+	//HANDLE hFileMapping = CreateFileMapping(fp, NULL, PAGE_READWRITE, (DWORD)(dwBytesInBlock >> 16), (DWORD)(dwBytesInBlock & 0x0000FFFF), NULL);
+	//HANDLE hFileMapping = CreateFileMapping(fp, NULL, PAGE_READWRITE, (DWORD)(dwBytesInBlock >> 32), (DWORD)(dwBytesInBlock & 0xFFFFFFFF), NULL);
+	HANDLE hFileMapping = CreateFileMapping(fp, NULL, PAGE_READWRITE, lpFileSize.HighPart, lpFileSize.LowPart, NULL);
+	
+	int dwError = GetLastError();
+	CloseHandle(fp);
+
+	if (hFileMapping == NULL)
+	{
+		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love 3.\r\n";
 		socketContext->postSend(module, notFound.c_str(), notFound.length());
 		return;
 	}
 
-	DWORD dwBytesInBlock = GetFileSize(fp, NULL);
-
-	HANDLE hFileMapping = CreateFileMapping(fp, NULL, PAGE_READWRITE, (DWORD)(dwBytesInBlock >> 16), (DWORD)(dwBytesInBlock & 0x0000FFFF), NULL);
-
-	int dwError = GetLastError();
-	CloseHandle(fp);
-
 	__int64 qwFileOffset = 0;
 
-	LPVOID pbFile = (LPVOID)MapViewOfFile(hFileMapping, FILE_MAP_ALL_ACCESS, (DWORD)(qwFileOffset >> 32), (DWORD)(qwFileOffset & 0xFFFFFFFF),
-		dwBytesInBlock);
+	LPVOID pbFile = MapViewOfFile(hFileMapping, FILE_MAP_ALL_ACCESS, (DWORD)(qwFileOffset >> 32), (DWORD)(qwFileOffset & 0xFFFFFFFF), dwBytesInBlock);
 
+	if (pbFile == NULL)
+	{
+		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love 4.\r\n";
+		socketContext->postSend(module, notFound.c_str(), notFound.length());
+		return;
+	}
 
 	std::ostringstream out;
 	out << request->getVersion() << " 200 OK\r\nContent-Length:" << dwBytesInBlock << "\r\n"
 		<< "Server:" << "InsHttpBeta 17.01\r\n"
 		<< "Content-Type:" << contentType << "\r\n" << "\r\n";
 	auto outStr = out.str();
-	char* buff = (char*)malloc(outStr.length() + dwBytesInBlock); //TODO: Optimize
-	memcpy(buff, outStr.c_str(), outStr.length());
-	memcpy(buff + outStr.length(), pbFile, dwBytesInBlock);
+	size_t nOutStrLen = outStr.length();
+	char* buff = (char*)malloc(nOutStrLen + dwBytesInBlock + 1); //TODO: Optimize
+	memcpy(buff, outStr.c_str(), nOutStrLen);
+	memcpy(buff + nOutStrLen, pbFile, dwBytesInBlock);
+	buff[nOutStrLen + dwBytesInBlock] = '\0';
+
+	//FILE *fp2 = NULL;
+	//fopen_s(&fp2, "K:\\Webs\\SimpleHttpServer\\SimpleHttpServer\\www\\indexTest.html", "wb");
+	//fwrite(buff, 1, nOutStrLen + dwBytesInBlock, fp2);
+	//fclose(fp2);
 
 	UnmapViewOfFile(pbFile);
 	CloseHandle(hFileMapping);
 
-	socketContext->postSend(module, buff, outStr.length() + dwBytesInBlock);
+	if (!socketContext->postSend(module, buff, nOutStrLen + dwBytesInBlock))
+	{
+		MessageBox(NULL, _T("postSend"), _T("postSend fail"), MB_OK);
+	}
+	free(buff);
 }
 
 // TODO: support url-encode/url-decode

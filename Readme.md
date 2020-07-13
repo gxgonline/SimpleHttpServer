@@ -5,6 +5,8 @@
 * 增加了64位编译选项
 * 所有数字997替换为宏：WSA_IO_PENDING。
 * 修改了错误fp = CreateFileA 返回值 fp == NUUL判断改为fp == INVALID_HANDLE_VALUE
+* 修改CreateFileMapping参数传入错误，应该是高32位，低32位。使用GetFileSizeEx支持大于4G的文件。
+* 解决CPU占用太大的问题。
 
 ## 说明
 

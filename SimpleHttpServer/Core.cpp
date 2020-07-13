@@ -31,7 +31,7 @@ Core* Core::getInstance() {
 }
 
 void Core::start() {
-	//processorsNum = 1; //for debug
+	processorsNum = 2; //for debug
 
 	std::thread** t = new std::thread*[processorsNum];
 	for (auto i = 0; i < processorsNum; i++) {
