@@ -86,7 +86,7 @@ public:
 private:
 	static std::atomic_int *startNum;
 
-	static const int LISTEN_PORT = 4024;
+	static const int LISTEN_PORT = 5555;
 	static const int PRE_ACCEPTEX_REQUESTS = 8;
 
 	static HANDLE iocp;

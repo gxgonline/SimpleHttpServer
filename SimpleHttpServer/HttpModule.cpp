@@ -62,15 +62,26 @@ void HttpModule::Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext
 		FormDataDecode(formData, request->getBody());
 		std::ostringstream out;
 		out << request->getVersion() << " 200 OK\r\n" << "Content-Type: text/html\r\n" << "Server: InsHttpBeta 17.01\r\n";
-		if (formData["login"].size() > 0 && formData["login"][0] == "3140104024" &&
-			formData["pass"].size() > 0 && formData["pass"][0] == "4024") {
-			out << "Content-Length:" << sizeof(SUCCESS_RESPONSE) - 1 << "\r\n\r\n" << SUCCESS_RESPONSE;
+
+		auto url = request->getURL();
+		if (url == "/post") {
+			if (formData["login"].size() > 0 && formData["login"][0] == "3140104024" &&
+				formData["pass"].size() > 0 && formData["pass"][0] == "4024") {
+				out << "Content-Length:" << sizeof(SUCCESS_RESPONSE) - 1 << "\r\n\r\n" << SUCCESS_RESPONSE;
+				SendFile(module, ioContext, socketContext, request, "./www/hello.html", "text/html");
+			}
+			else {
+				out << "Content-Length:" << sizeof(FAIL_RESPONSE) - 1 << "\r\n\r\n" << FAIL_RESPONSE;
+				auto outStr = out.str();
+				socketContext->postSend(module, outStr.c_str(), outStr.length());
+			}
 		}
-		else {
+		else
+		{
 			out << "Content-Length:" << sizeof(FAIL_RESPONSE) - 1 << "\r\n\r\n" << FAIL_RESPONSE;
+			auto outStr = out.str();
+			socketContext->postSend(module, outStr.c_str(), outStr.length());
 		}
-		auto outStr = out.str();
-		socketContext->postSend(module, outStr.c_str(), outStr.length());
 	}
 	socketContext->request->responsed = true;
 }
