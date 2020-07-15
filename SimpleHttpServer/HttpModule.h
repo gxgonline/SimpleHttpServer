@@ -14,7 +14,7 @@ public:
 	~HttpModule();
 
 	static void Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext, IOCPModule::PER_SOCKET_CONTEXT* socketContext);
-	static void SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext, IOCPModule::PER_SOCKET_CONTEXT* socketContext,
+	static bool SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext, IOCPModule::PER_SOCKET_CONTEXT* socketContext,
 		HttpRequest* request, std::string filePath, std::string contentType);
 	static void FormDataDecode(std::map<std::string, std::vector<std::string>>& formData, std::string source);
 };

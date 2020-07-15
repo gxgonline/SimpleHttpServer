@@ -34,11 +34,7 @@ void HttpModule::Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext
 
 	if (method == "GET") {
 		auto url = request->getURL();
-		if (url == "/") {
-			//SendFile(module, ioContext, socketContext, request, "./www/index.html", "text/html");
-			SendFile(module, ioContext, socketContext, request, "./www/index.html", "text/html");
-		}
-		else if (url == "/index.html") {
+		if (url == "/" || url == "/index.html") {
 			//SendFile(module, ioContext, socketContext, request, "./www/index.html", "text/html");
 			SendFile(module, ioContext, socketContext, request, "./www/index.html", "text/html");
 		}
@@ -52,7 +48,10 @@ void HttpModule::Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext
 			SendFile(module, ioContext, socketContext, request, "./www/1.png", "image/png");
 		}
 		else {
-			SendFile(module, ioContext, socketContext, request, "./www/404.html", "text/html");
+			if (!SendFile(module, ioContext, socketContext, request, "./www" + url, "text/html"))
+			{
+				SendFile(module, ioContext, socketContext, request, "./www/404.html", "text/html");
+			}			
 			//std::string notFound = request->getVersion() + " " + "404 Not Found\r\n";
 			//socketContext->postSend(module, notFound.c_str(), notFound.length());
 		}
@@ -65,8 +64,8 @@ void HttpModule::Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext
 
 		auto url = request->getURL();
 		if (url == "/post") {
-			if (formData["login"].size() > 0 && formData["login"][0] == "3140104024" &&
-				formData["pass"].size() > 0 && formData["pass"][0] == "4024") {
+			if (formData["login"].size() > 0 && formData["login"][0] == "19784420" &&
+				formData["pass"].size() > 0 && formData["pass"][0] == "4420") {
 				out << "Content-Length:" << sizeof(SUCCESS_RESPONSE) - 1 << "\r\n\r\n" << SUCCESS_RESPONSE;
 				SendFile(module, ioContext, socketContext, request, "./www/hello.html", "text/html");
 			}
@@ -86,7 +85,7 @@ void HttpModule::Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext
 	socketContext->request->responsed = true;
 }
 
-void HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext, IOCPModule::PER_SOCKET_CONTEXT* socketContext,
+bool HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext, IOCPModule::PER_SOCKET_CONTEXT* socketContext,
 	HttpRequest* request, std::string filePath, std::string contentType) {
 
 	HANDLE fp = CreateFileA(filePath.c_str(), GENERIC_READ | GENERIC_WRITE,	FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
@@ -96,7 +95,7 @@ void HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioCont
 	{
 		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love 1.\r\n";
 		socketContext->postSend(module, notFound.c_str(), notFound.length());
-		return;
+		return false;
 	}
 	LARGE_INTEGER lpFileSize;
 	if (!GetFileSizeEx(fp, &lpFileSize))
@@ -104,7 +103,7 @@ void HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioCont
 		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love 2.\r\n";
 		socketContext->postSend(module, notFound.c_str(), notFound.length());
 		CloseHandle(fp);
-		return;
+		return false;
 	}
 	DWORD dwBytesInBlock = lpFileSize.LowPart;//GetFileSize(fp, NULL);
 
@@ -120,7 +119,7 @@ void HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioCont
 	{
 		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love 3.\r\n";
 		socketContext->postSend(module, notFound.c_str(), notFound.length());
-		return;
+		return false;
 	}
 
 	__int64 qwFileOffset = 0;
@@ -131,7 +130,7 @@ void HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioCont
 	{
 		std::string notFound = request->getVersion() + " " + "404 Not Found.We Found love 4.\r\n";
 		socketContext->postSend(module, notFound.c_str(), notFound.length());
-		return;
+		return false;
 	}
 
 	std::ostringstream out;
@@ -155,9 +154,10 @@ void HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioCont
 
 	if (!socketContext->postSend(module, buff, nOutStrLen + dwBytesInBlock))
 	{
-		MessageBox(NULL, _T("postSend"), _T("postSend fail"), MB_OK);
+		//MessageBox(NULL, _T("postSend"), _T("postSend fail"), MB_OK);
 	}
 	free(buff);
+	return true;
 }
 
 // TODO: support url-encode/url-decode

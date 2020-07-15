@@ -31,12 +31,13 @@ Core* Core::getInstance() {
 }
 
 void Core::start() {
-	processorsNum = 2; //for debug
+	processorsNum = 1; //for debug
 
 	std::thread** t = new std::thread*[processorsNum];
 	for (auto i = 0; i < processorsNum; i++) {
 		t[i] = new std::thread(Core::threadproc);
 	}
+	// 第一个join导致堵塞，执行不到后面的join
 	for (auto i = 0; i < processorsNum; i++) {
 		t[i]->join();
 	}

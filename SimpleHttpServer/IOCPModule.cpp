@@ -54,7 +54,7 @@ bool IOCPModule::PER_IO_CONTEXT::postRecv(IOCPModule* module, IOCPModule::_PER_I
 }
 
 bool IOCPModule::PER_SOCKET_CONTEXT::insertIoContext(PER_IO_CONTEXT* ioContext) {
-	//return true; // for test //gxg-
+	return true; // for test //准备gxg-
 	if (arrayLen < arrayCap) {
 		arrayIoContext[arrayLen] = ioContext;
 		arrayLen++;
@@ -249,20 +249,25 @@ bool IOCPModule::freeIoContext(PER_IO_CONTEXT* context) {
 
 bool IOCPModule::eventLoop() {
 	
-	DWORD nBytes;
+	DWORD nBytes = 0;
 	PER_SOCKET_CONTEXT* socketContext = nullptr;
 	LPOVERLAPPED lpoverlapped;
 	if (GetQueuedCompletionStatus(iocp, &nBytes, (PULONG_PTR)&socketContext, &lpoverlapped, INFINITE) == FALSE) {
 		return true;
 	};
-	if (0 == nBytes)//gxg+
+	PER_IO_CONTEXT* context = CONTAINING_RECORD(lpoverlapped, PER_IO_CONTEXT, overlapped);
+	if (nBytes == 0 || nBytes == -1)//gxg+
 	{
-		// 释放掉对应的资源
-		//mempool->free(context);
+		if (recv == context->opType || send == context->opType)
+		{
+			// 释放掉对应的资源
+			if (context->wsaBuf.len > MAX_BUFFER_LEN)
+				freeSendContext((LARGE_SEND_CONTEXT*)context);
+			else
+				freeIoContext(context);			
+		}
 		return true;
 	}
-	PER_IO_CONTEXT* context = CONTAINING_RECORD(lpoverlapped, PER_IO_CONTEXT, overlapped);
-
 	DISCONNECT_CONTEXT* disconnectContex;
 	switch (context->opType) {
 	case accept:
