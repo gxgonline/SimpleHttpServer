@@ -39,7 +39,7 @@ void Core::start() {
 	}
 	// 第一个join导致堵塞，执行不到后面的join
 	for (auto i = 0; i < processorsNum; i++) {
-		t[i]->join();
+		t[i]->join();// 阻止
 	}
 }
 
@@ -53,6 +53,7 @@ void Core::threadproc() {
 			std::cout << "debug" << std::endl;
 		}
 	}
+	delete iocpModule;
 #ifdef DEBUG
 	std::cout << "I'm exploding..." << std::endl;
 #endif

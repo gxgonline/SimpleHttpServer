@@ -84,28 +84,28 @@ public:
 	bool freeSocketContext(PER_SOCKET_CONTEXT* context);
 	bool freeSendContext(LARGE_SEND_CONTEXT* context);
 private:
-	static std::atomic_int *startNum;
+	static std::atomic_int *m_startNum;
 
 	static const int LISTEN_PORT = 4420;
 	static const int PRE_ACCEPTEX_REQUESTS = 8;
 
-	static HANDLE iocp;
-	static SOCKET listener;
-	static LPFN_ACCEPTEX acceptEx;
-	static LPFN_GETACCEPTEXSOCKADDRS getAcceptexSockAddrs;
-	static LPFN_DISCONNECTEX disconnectEx;
+	static HANDLE m_iocp;
+	static SOCKET m_listener;
+	static LPFN_ACCEPTEX m_acceptEx;
+	static LPFN_GETACCEPTEXSOCKADDRS m_getAcceptexSockAddrs;
+	static LPFN_DISCONNECTEX m_disconnectEx;
 
-	std::queue<SOCKET> reusedSocketQueue;
+	std::queue<SOCKET> m_reusedSocketQueue;
 
-	Mempool *mempool = NULL;
+	Mempool *m_mempool = NULL;
 
 	// Note:
 	// ioContext could be returned form acceptex
 	// to get the socket, please access socketContext
-	static EVENT_HANDLER recvHandler;
+	static EVENT_HANDLER m_recvHandler;
 	// Note:
 	// 
-	static EVENT_HANDLER sendHandler;
+	static EVENT_HANDLER m_sendHandler;
 
 	bool postAcceptEx(PER_IO_CONTEXT* context);
 	bool postRecv(PER_IO_CONTEXT* ioContext, PER_SOCKET_CONTEXT* socketContext);

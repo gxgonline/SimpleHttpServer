@@ -6,14 +6,14 @@
 
 // Static variable initialization
 // ------------------------------------------------------START-----------------------------------------------------------------------------------
-std::atomic_int* IOCPModule::startNum = new std::atomic_int;
-HANDLE IOCPModule::iocp = NULL;
-SOCKET IOCPModule::listener = NULL;
-LPFN_ACCEPTEX IOCPModule::acceptEx;
-LPFN_DISCONNECTEX IOCPModule::disconnectEx;
-LPFN_GETACCEPTEXSOCKADDRS IOCPModule::getAcceptexSockAddrs;
+std::atomic_int* IOCPModule::m_startNum = new std::atomic_int;
+HANDLE IOCPModule::m_iocp = NULL;
+SOCKET IOCPModule::m_listener = NULL;
+LPFN_ACCEPTEX IOCPModule::m_acceptEx;
+LPFN_DISCONNECTEX IOCPModule::m_disconnectEx;
+LPFN_GETACCEPTEXSOCKADDRS IOCPModule::m_getAcceptexSockAddrs;
 
-IOCPModule::EVENT_HANDLER IOCPModule::recvHandler =
+IOCPModule::EVENT_HANDLER IOCPModule::m_recvHandler =
 [](IOCPModule* module, PER_IO_CONTEXT* ioContext, PER_SOCKET_CONTEXT* socketContext) {
 #ifdef DEBUG
 	std::cout << "Recv:" << ioContext->overlapped.InternalHigh << std::endl;
@@ -30,7 +30,7 @@ IOCPModule::EVENT_HANDLER IOCPModule::recvHandler =
 	}*/
 };
 
-IOCPModule::EVENT_HANDLER IOCPModule::sendHandler =
+IOCPModule::EVENT_HANDLER IOCPModule::m_sendHandler =
 [](IOCPModule* module, PER_IO_CONTEXT* ioContext, PER_SOCKET_CONTEXT* socketContext) {
 	//socketContext->close(module); //TODO: KeepAlive
 };
@@ -72,7 +72,7 @@ bool IOCPModule::PER_SOCKET_CONTEXT::insertIoContext(PER_IO_CONTEXT* ioContext) 
 
 bool IOCPModule::PER_SOCKET_CONTEXT::postSend(IOCPModule* module, const char* buff, size_t len) {
 	if (len > MAX_BUFFER_LEN) {
-		LARGE_SEND_CONTEXT* ioContext = module->allocSendContext(this->socket, len, IOCPModule::sendHandler);
+		LARGE_SEND_CONTEXT* ioContext = module->allocSendContext(this->socket, len, IOCPModule::m_sendHandler);
 		memcpy(ioContext->wsaBuf.buf, buff, len); // TODO: optimize
 		// TODO: insert to io operation list
 		// TODO: fullize thought
@@ -84,7 +84,7 @@ bool IOCPModule::PER_SOCKET_CONTEXT::postSend(IOCPModule* module, const char* bu
 	}
 
 	// else
-	PER_IO_CONTEXT* ioContext = module->allocIoContext(this->socket, send, IOCPModule::sendHandler);
+	PER_IO_CONTEXT* ioContext = module->allocIoContext(this->socket, send, IOCPModule::m_sendHandler);
 	memcpy(ioContext->szBuffer, buff, len); // TODO: optimize
 	ioContext->wsaBuf.len = (ULONG)len;
 	if (!insertIoContext(ioContext))
@@ -112,12 +112,12 @@ bool IOCPModule::PER_SOCKET_CONTEXT::close(IOCPModule* module) {
 
 IOCPModule::IOCPModule(Mempool* mempoll)
 {
-	this->mempool = mempoll;
-	if (listener == NULL) return;
+	this->m_mempool = mempoll;
+	if (m_listener == NULL) return;
 	PER_IO_CONTEXT *ioContext = allocIoContext();
 	if (ioContext == NULL) return;
 	if (ioContext->socketAccept == INVALID_SOCKET) return;
-	if (acceptEx(listener, ioContext->socketAccept, ioContext->wsaBuf.buf, ioContext->wsaBuf.len - 2 * (sizeof(sockaddr_in) + 16),
+	if (m_acceptEx(m_listener, ioContext->socketAccept, ioContext->wsaBuf.buf, ioContext->wsaBuf.len - 2 * (sizeof(sockaddr_in) + 16),
 		sizeof(sockaddr_in) + 16, sizeof(sockaddr_in) + 16, 0, (LPOVERLAPPED)&ioContext->overlapped) == FALSE &&
 		WSAGetLastError() != WSA_IO_PENDING && WSAGetLastError() != 0) {
 #ifdef DEBUG
@@ -127,54 +127,54 @@ IOCPModule::IOCPModule(Mempool* mempoll)
 		freeIoContext(ioContext);
 		return;
 	}
-	startNum++;
+	m_startNum++;
 }
 
 
 IOCPModule::~IOCPModule()
 {
-	if (startNum->load() == 0)
+	if (m_startNum->load() == 0)
 		WSACleanup();
 }
 
 bool IOCPModule::initialize() {
-	iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0); // Num of CPU
+	m_iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0); // Num of CPU
 	WSADATA wsaData;
 	auto ret = WSAStartup(MAKEWORD(2, 2), &wsaData);
 	if (ret != NULL) return false;
 
 	struct sockaddr_in serverAddress;
-	listener = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
-	if (listener == INVALID_SOCKET) return false;
+	m_listener = WSASocket(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+	if (m_listener == INVALID_SOCKET) return false;
 
 	ZeroMemory((char*)&serverAddress, sizeof(serverAddress));
 	serverAddress.sin_family = AF_INET;
 	serverAddress.sin_addr.S_un.S_addr = inet_addr("0.0.0.0");
 	serverAddress.sin_port = htons(LISTEN_PORT);
 
-	if (SOCKET_ERROR == bind(listener, (struct sockaddr*)&serverAddress, sizeof(serverAddress)))
+	if (SOCKET_ERROR == bind(m_listener, (struct sockaddr*)&serverAddress, sizeof(serverAddress)))
 		return false;
-	if (SOCKET_ERROR == listen(listener, SOMAXCONN))
+	if (SOCKET_ERROR == listen(m_listener, SOMAXCONN))
 		return false;
-	if(CreateIoCompletionPort((HANDLE)listener, iocp, 0, 0) == NULL) return false;
+	if(CreateIoCompletionPort((HANDLE)m_listener, m_iocp, 0, 0) == NULL) return false;
 
 	// get AcceptEx process pointer
 	GUID guidAcceptEx = WSAID_ACCEPTEX;
 	DWORD dwBytes = 0;
-	WSAIoctl(listener, SIO_GET_EXTENSION_FUNCTION_POINTER, &guidAcceptEx, sizeof(guidAcceptEx),
-		&acceptEx, sizeof(acceptEx), &dwBytes, NULL, NULL);
+	WSAIoctl(m_listener, SIO_GET_EXTENSION_FUNCTION_POINTER, &guidAcceptEx, sizeof(guidAcceptEx),
+		&m_acceptEx, sizeof(m_acceptEx), &dwBytes, NULL, NULL);
 
 	// get GetAcceptExSockAddrs process pointer
 	GUID guidGetAcceptExSockAddrs = WSAID_GETACCEPTEXSOCKADDRS;
-	WSAIoctl(listener, SIO_GET_EXTENSION_FUNCTION_POINTER, &guidGetAcceptExSockAddrs, sizeof(guidGetAcceptExSockAddrs),
-		&getAcceptexSockAddrs, sizeof(getAcceptexSockAddrs), &dwBytes, NULL, NULL);
+	WSAIoctl(m_listener, SIO_GET_EXTENSION_FUNCTION_POINTER, &guidGetAcceptExSockAddrs, sizeof(guidGetAcceptExSockAddrs),
+		&m_getAcceptexSockAddrs, sizeof(m_getAcceptexSockAddrs), &dwBytes, NULL, NULL);
 
 	// get DisconnectEx process pointer
 	GUID guidDisconnectEx = WSAID_DISCONNECTEX;
-	WSAIoctl(listener, SIO_GET_EXTENSION_FUNCTION_POINTER, &guidDisconnectEx, sizeof(guidDisconnectEx),
-		&disconnectEx, sizeof(disconnectEx), &dwBytes, NULL, NULL);
+	WSAIoctl(m_listener, SIO_GET_EXTENSION_FUNCTION_POINTER, &guidDisconnectEx, sizeof(guidDisconnectEx),
+		&m_disconnectEx, sizeof(m_disconnectEx), &dwBytes, NULL, NULL);
 
-	startNum->store(0);
+	m_startNum->store(0);
 	return true;
 }
 
@@ -189,38 +189,38 @@ IOCPModule::PER_IO_CONTEXT* IOCPModule::allocIoContext() {
 
 // allocate a io context for wsarecv/wsasend
 // this function dosn't create new socket
-IOCPModule::PER_IO_CONTEXT* IOCPModule::allocIoContext(SOCKET acceptSocket, operation opType = recv, EVENT_HANDLER ev = recvHandler) {
+IOCPModule::PER_IO_CONTEXT* IOCPModule::allocIoContext(SOCKET acceptSocket, operation opType = recv, EVENT_HANDLER ev = m_recvHandler) {
 	PER_IO_CONTEXT *ioContext = (PER_IO_CONTEXT*)malloc(sizeof(PER_IO_CONTEXT));
 	ZeroMemory(ioContext, sizeof(PER_IO_CONTEXT));
 	ioContext->opType = opType;
 	ioContext->socketAccept = acceptSocket;
 	ioContext->wsaBuf.len = MAX_BUFFER_LEN;
 	ioContext->wsaBuf.buf = ioContext->szBuffer;
-	ioContext->ev = ev ? ev : recvHandler;
+	ioContext->ev = ev ? ev : m_recvHandler;
 	return ioContext;
 }
 
 // allocate a io context for wsasend with large buffer
 // this function dosn't create new socket
-IOCPModule::LARGE_SEND_CONTEXT* IOCPModule::allocSendContext(SOCKET acceptSocket, size_t size, EVENT_HANDLER ev = sendHandler) {
-	LARGE_SEND_CONTEXT *ioContext = (LARGE_SEND_CONTEXT*)mempool->alloc(sizeof(LARGE_SEND_CONTEXT));
+IOCPModule::LARGE_SEND_CONTEXT* IOCPModule::allocSendContext(SOCKET acceptSocket, size_t size, EVENT_HANDLER ev = m_sendHandler) {
+	LARGE_SEND_CONTEXT *ioContext = (LARGE_SEND_CONTEXT*)m_mempool->alloc(sizeof(LARGE_SEND_CONTEXT));
 	static_assert(sizeof(LARGE_SEND_CONTEXT) < 512, "largeContext is too large");
 	ioContext->opType = send;
 	ioContext->socketAccept = acceptSocket;
 	ioContext->wsaBuf.len = (ULONG)size;
-	ioContext->wsaBuf.buf = (char*)mempool->allocPages(size);
-	ioContext->ev = ev ? ev : sendHandler;
+	ioContext->wsaBuf.buf = (char*)m_mempool->allocPages(size);
+	ioContext->ev = ev ? ev : m_sendHandler;
 	return ioContext;
 }
 
 bool IOCPModule::freeSendContext(LARGE_SEND_CONTEXT* context) {
-	mempool->freePages(context->wsaBuf.buf);
-	mempool->free(context);
+	m_mempool->freePages(context->wsaBuf.buf);
+	m_mempool->free(context);
 	return true;
 }
 
 IOCPModule::PER_SOCKET_CONTEXT* IOCPModule::allocSocketContext() {
-	auto ret = (PER_SOCKET_CONTEXT*)mempool->alloc(sizeof(PER_SOCKET_CONTEXT));
+	auto ret = (PER_SOCKET_CONTEXT*)m_mempool->alloc(sizeof(PER_SOCKET_CONTEXT));
 	if (ret == nullptr) {
 		// Only for debug
 		std::cout << "DEBUG";
@@ -238,7 +238,7 @@ bool IOCPModule::freeSocketContext(PER_SOCKET_CONTEXT* context) {
 		delete context->request;
 	}
 	free(context->arrayIoContext);
-	mempool->free(context);
+	m_mempool->free(context);
 	return true;
 }
 
@@ -252,21 +252,22 @@ bool IOCPModule::eventLoop() {
 	DWORD nBytes = 0;
 	PER_SOCKET_CONTEXT* socketContext = nullptr;
 	LPOVERLAPPED lpoverlapped;
-	if (GetQueuedCompletionStatus(iocp, &nBytes, (PULONG_PTR)&socketContext, &lpoverlapped, INFINITE) == FALSE) {
+	if (GetQueuedCompletionStatus(m_iocp, &nBytes, (PULONG_PTR)&socketContext, &lpoverlapped, INFINITE) == FALSE) {
 		return true;
 	};
 	PER_IO_CONTEXT* context = CONTAINING_RECORD(lpoverlapped, PER_IO_CONTEXT, overlapped);
 	if (nBytes == 0 || nBytes == -1)//gxg+
 	{
-		if (recv == context->opType || send == context->opType)
+		if (recv == context->opType || send == context->opType)//仅对recv和send进行返回处理，accept时若返回则再也无法连接请求了。
 		{
 			// 释放掉对应的资源
 			if (context->wsaBuf.len > MAX_BUFFER_LEN)
 				freeSendContext((LARGE_SEND_CONTEXT*)context);
 			else
-				freeIoContext(context);			
+				freeIoContext(context);		
+			context = nullptr;
+			return true;
 		}
-		return true;
 	}
 	DISCONNECT_CONTEXT* disconnectContex;
 	switch (context->opType) {
@@ -305,7 +306,7 @@ bool IOCPModule::eventLoop() {
 		if (!doDisconnect(disconnectContex->socket)) {
 			//TODO
 		}
-		mempool->free(disconnectContex);
+		m_mempool->free(disconnectContex);
 		return true;
 	default:
 		return false;
@@ -322,7 +323,7 @@ bool IOCPModule::postAcceptEx(PER_IO_CONTEXT* context) {
 	context->opType = accept;
 	context->socketAccept = recvSocket;
 
-	if (acceptEx(listener, context->socketAccept, context->wsaBuf.buf, context->wsaBuf.len - 2 * (sizeof(sockaddr_in) + 16),
+	if (m_acceptEx(m_listener, context->socketAccept, context->wsaBuf.buf, context->wsaBuf.len - 2 * (sizeof(sockaddr_in) + 16),
 		sizeof(sockaddr_in) + 16, sizeof(sockaddr_in) + 16, 0, (LPOVERLAPPED)&context->overlapped) == FALSE &&
 		WSAGetLastError() != WSA_IO_PENDING && WSAGetLastError() != 0) {
 		closesocket(context->socketAccept); // Tag
@@ -336,7 +337,7 @@ bool IOCPModule::doAcceptEx(PER_IO_CONTEXT* context) {
 	SOCKADDR_IN *clientAddr = NULL, *localAddr = NULL;
 	int remoteLen  = sizeof(SOCKADDR_IN);
 	int localLen = remoteLen;
-	getAcceptexSockAddrs(context->wsaBuf.buf, context->wsaBuf.len - ((sizeof(SOCKADDR_IN) + 16) * 2),
+	m_getAcceptexSockAddrs(context->wsaBuf.buf, context->wsaBuf.len - ((sizeof(SOCKADDR_IN) + 16) * 2),
 		sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, (LPSOCKADDR*)&localAddr, &localLen, (LPSOCKADDR*)&clientAddr, &remoteLen);
 #ifdef DEBUG
 	std::cout << "Client:  " << inet_ntoa(clientAddr->sin_addr) << ":" << ntohs(clientAddr->sin_port) << "   has been accepted." << std::endl;
@@ -359,7 +360,7 @@ bool IOCPModule::doAcceptEx(PER_IO_CONTEXT* context) {
 
 	
 	// bind new request to iocp
-	if (CreateIoCompletionPort((HANDLE)recvIoContext->socketAccept, IOCPModule::iocp, (ULONG_PTR)recvSocketContext, 0) == NULL
+	if (CreateIoCompletionPort((HANDLE)recvIoContext->socketAccept, IOCPModule::m_iocp, (ULONG_PTR)recvSocketContext, 0) == NULL
 		&& WSAGetLastError() != ERROR_INVALID_PARAMETER) {
 		// About the 87 error param error:
 		// Binding a reused socket to iocp may cause 87 error
@@ -408,24 +409,24 @@ bool IOCPModule::postRecv(PER_IO_CONTEXT* ioContext, PER_SOCKET_CONTEXT* socketC
 }
 
 SOCKET IOCPModule::getReusedSocket() {
-	if (reusedSocketQueue.empty()) {
+	if (m_reusedSocketQueue.empty()) {
 		return socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	}
-	SOCKET ret = reusedSocketQueue.front();
-	reusedSocketQueue.pop();
+	SOCKET ret = m_reusedSocketQueue.front();
+	m_reusedSocketQueue.pop();
 	return ret;
 }
 
 bool IOCPModule::freeReusedSocket(SOCKET s) {
-	reusedSocketQueue.push(s);
+	m_reusedSocketQueue.push(s);
 	return true;
 }
 
 bool IOCPModule::postDisconnect(SOCKET s) {
-	DISCONNECT_CONTEXT* context = (DISCONNECT_CONTEXT*)mempool->alloc(sizeof(DISCONNECT_CONTEXT));
+	DISCONNECT_CONTEXT* context = (DISCONNECT_CONTEXT*)m_mempool->alloc(sizeof(DISCONNECT_CONTEXT));
 	context->socket = s;
 	context->opType = disconnect;
-	if (disconnectEx(s, &context->overlapped, TF_REUSE_SOCKET, NULL) == FALSE && WSAGetLastError() != WSA_IO_PENDING)
+	if (m_disconnectEx(s, &context->overlapped, TF_REUSE_SOCKET, NULL) == FALSE && WSAGetLastError() != WSA_IO_PENDING)
 		return false;
 	return true;
 }
