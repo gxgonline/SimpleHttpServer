@@ -13,10 +13,10 @@ public:
 	~Core();
 	void start();
 private:
-	static Core* instance;
+	static Core* m_pInstance;
 	static void threadproc();
 
-	int stop = 0;
-	int processorsNum = 0;
+	//int m_nStop = 0;
+	int m_nProcessorsNum = 0;
 };
 

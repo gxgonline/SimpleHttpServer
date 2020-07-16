@@ -8,25 +8,25 @@ HttpRequest::HttpRequest(char* buf, size_t len) // TODO: maybe bug
 		char c = currentStream.get();
 		while (!currentStream.eof()) {
 			if (c == ' ') return requestURL;
-			method.put(c);
+			m_method.put(c);
 			c = currentStream.get();
 		}
 		return requestMethod;
 	};
 
-	httpRequestStateM.addStep(requestMethod, requestMethodHandler);
+	m_httpRequestStateM.addStep(requestMethod, requestMethodHandler);
 
-	httpRequestStateM.addStep(requestURL, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
+	m_httpRequestStateM.addStep(requestURL, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
 		char c = currentStream.get();
 		while (!currentStream.eof()) {
 			if (c == ' ') return requestVersion;
-			url.put(c);
+			m_url.put(c);
 			c = currentStream.get();
 		}
 		return requestURL;
 	});
 
-	httpRequestStateM.addStep(requestVersion, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
+	m_httpRequestStateM.addStep(requestVersion, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
 		char c = currentStream.get();
 		while (!currentStream.eof()) {
 			if (c == '\r') {
@@ -43,26 +43,26 @@ HttpRequest::HttpRequest(char* buf, size_t len) // TODO: maybe bug
 					c = '\r';
 				}
 			}
-			version.put(c);
+			m_version.put(c);
 			c = currentStream.get();
 		}
 		return requestVersion;
 	});
 
-	httpRequestStateM.addStep(headerKey, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
+	m_httpRequestStateM.addStep(headerKey, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
 		char c = currentStream.get();
 		while (!currentStream.eof()) {
 			if (c == ':') {
-				currentValue = "";
+				m_currentValue = "";
 				return headerValue;
 			}
-			currentKey += c;
+			m_currentKey += c;
 			c = currentStream.get();
 		}
 		return headerKey;
 	});
 
-	httpRequestStateM.addStep(headerValue, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
+	m_httpRequestStateM.addStep(headerValue, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
 		char c = currentStream.get();
 		while (!currentStream.eof()) {
 			if (c == '\r') {
@@ -74,7 +74,7 @@ HttpRequest::HttpRequest(char* buf, size_t len) // TODO: maybe bug
 				if (c == '\n') {
 					c = currentStream.get();
 					if (currentStream.eof()) {
-						header[currentKey] = currentValue;
+						m_header[m_currentKey] = m_currentValue;
 						return headerValue;
 					}
 					if (c == '\r') {
@@ -84,17 +84,17 @@ HttpRequest::HttpRequest(char* buf, size_t len) // TODO: maybe bug
 							return headerValue;
 						}
 						if (c == '\n') {
-							header[currentKey] = currentValue;
+							m_header[m_currentKey] = m_currentValue;
 							return body;
 						}
 						currentStream.putback(c);
 						currentStream.putback('\r');
-						currentKey == "";
+						m_currentKey == "";
 						return headerKey;
 					}
 					currentStream.putback(c);
-					header[currentKey] = currentValue;
-					currentKey = "";
+					m_header[m_currentKey] = m_currentValue;
+					m_currentKey = "";
 					return headerKey;
 				}
 				else
@@ -103,38 +103,38 @@ HttpRequest::HttpRequest(char* buf, size_t len) // TODO: maybe bug
 					c = '\r';
 				}
 			}
-			currentValue += c;
+			m_currentValue += c;
 			c = currentStream.get();
 		}
 		return headerValue;
 	});
 
-	httpRequestStateM.addStep(body, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
+	m_httpRequestStateM.addStep(body, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
 		prepareHeader();
 		char c = currentStream.get();
 		while (!currentStream.eof() && c != 0) { // c == 0 -> wait for next request(body)
-			bodyStream.put(c);
-			contentReceived++;
-			if (contentReceived >= contentLength && contentLength != 0) {
-				finished = true;
+			m_bodyStream.put(c);
+			m_contentReceived++;
+			if (m_contentReceived >= m_contentLength && m_contentLength != 0) {
+				m_finished = true;
 				return finish;
 			}
 			c = currentStream.get();
 		}
-		if (contentLength != 0)
+		if (m_contentLength != 0)
 			return body;
 		else
 		{
-			finished = true;
+			m_finished = true;
 			return finish;
 		}
 	});
 
-	httpRequestStateM.addStep(finish, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
+	m_httpRequestStateM.addStep(finish, [this](httpRequestState start, std::stringstream& currentStream) -> httpRequestState {
 		return finish;
 	});
 
-	finished = parse(buf, len);
+	m_finished = parse(buf, len);
 }
 
 
@@ -143,16 +143,16 @@ HttpRequest::~HttpRequest()
 }
 
 bool HttpRequest::parse(char* buf, size_t len) {
-	std::lock_guard<std::mutex> lock(mutex);
-	if (finished) return true;
+	std::lock_guard<std::mutex> lock(m_mutex);
+	if (m_finished) return true;
 	std::string buffer(buf, len);
-	httpRequestStateM.produce(buffer);
-	return finished;
+	m_httpRequestStateM.produce(buffer);
+	return m_finished;
 }
 
 void HttpRequest::prepareHeader() {
-	if (headerPrepared) return;
-	for (auto& h : header) {
+	if (m_headerPrepared) return;
+	for (auto& h : m_header) {
 		/*
 		std::string upper;
 		for (auto c : h.first) {
@@ -164,32 +164,32 @@ void HttpRequest::prepareHeader() {
 		header[upper] = h.second;
 		*/
 		if (h.first == "Content-Length") {
-			contentLength = std::atoi(h.second.c_str());
+			m_contentLength = std::atoi(h.second.c_str());
 		}
 	}
-	headerPrepared = true;
+	m_headerPrepared = true;
 }
 
 std::string HttpRequest::getMethod() {
-	return method.str();
+	return m_method.str();
 }
 
 std::string HttpRequest::getURL() {
-	return url.str();
+	return m_url.str();
 }
 
 std::string HttpRequest::getBody() {
-	return bodyStream.str();
+	return m_bodyStream.str();
 }
 
 std::string HttpRequest::getVersion() {
-	return version.str();
+	return m_version.str();
 }
 
 bool HttpRequest::isFinished() {
-	return finished;
+	return m_finished;
 }
 
 std::map<std::string, std::string>& HttpRequest::getHeader() {
-	return header;
+	return m_header;
 }

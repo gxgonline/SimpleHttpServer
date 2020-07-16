@@ -4,13 +4,13 @@
 //#define DEBUG
 
 
-Core* Core::instance = nullptr;
+Core* Core::m_pInstance = nullptr;
 
 Core::Core()
 {
 	SYSTEM_INFO si;
 	GetSystemInfo(&si);
-	processorsNum = si.dwNumberOfProcessors;
+	m_nProcessorsNum = si.dwNumberOfProcessors;
 
 	if (!IOCPModule::initialize()) {
 #ifdef DEBUG
@@ -26,19 +26,19 @@ Core::~Core()
 }
 
 Core* Core::getInstance() {
-	if (instance) return instance;
-	return instance = new Core();
+	if (m_pInstance) return m_pInstance;
+	return m_pInstance = new Core();
 }
 
 void Core::start() {
-	processorsNum = 1; //for debug
+	m_nProcessorsNum = 2; //for debug
 
-	std::thread** t = new std::thread*[processorsNum];
-	for (auto i = 0; i < processorsNum; i++) {
+	std::thread** t = new std::thread*[m_nProcessorsNum];
+	for (auto i = 0; i < m_nProcessorsNum; i++) {
 		t[i] = new std::thread(Core::threadproc);
 	}
 	// 第一个join导致堵塞，执行不到后面的join
-	for (auto i = 0; i < processorsNum; i++) {
+	for (auto i = 0; i < m_nProcessorsNum; i++) {
 		t[i]->join();// 阻止
 	}
 }

@@ -18,7 +18,7 @@ void HttpModule::Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext
 	if (socketContext->request) {
 
 		request = socketContext->request;
-		if (socketContext->request->responsed) {
+		if (socketContext->request->m_responsed) {
 			delete request;
 			request = new HttpRequest(ioContext->wsaBuf.buf, ioContext->overlapped.InternalHigh);
 			socketContext->request = request;
@@ -82,7 +82,7 @@ void HttpModule::Serve(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext
 			socketContext->postSend(module, outStr.c_str(), outStr.length());
 		}
 	}
-	socketContext->request->responsed = true;
+	socketContext->request->m_responsed = true;
 }
 
 bool HttpModule::SendFile(IOCPModule* module, IOCPModule::PER_IO_CONTEXT* ioContext, IOCPModule::PER_SOCKET_CONTEXT* socketContext,
